@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Login Form</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f2f2f2;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        padding: 20px;
+      }
+
+      .login-box {
+        background: white;
+        padding: 30px 25px;
+        border-radius: 10px;
+        width: 100%;
+        max-width: 400px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      }
+
+      .login-box h2 {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+
+      input[type="text"],
+      input[type="password"] {
+        width: 100%;
+        padding: 10px;
+        margin: 8px 0 16px 0;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+      }
+
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        font-size: 14px;
+        margin-bottom: 16px;
+      }
+
+      .checkbox-row label {
+        margin-left: 6px;
+      }
+
+      button {
+        width: 100%;
+        background-color: #007bff;
+        color: white;
+        padding: 10px;
+        border: none;
+        border-radius: 5px;
+        font-size: 16px;
+        cursor: pointer;
+      }
+
+      #message {
+        color: red;
+        text-align: center;
+        margin-top: 10px;
+        font-size: 14px;
+      }
+
+      @media (max-width: 500px) {
+        .login-box {
+          padding: 20px;
+        }
+
+        button {
+          font-size: 20px;
+        }
+      }
+
+      .password-wrapper {
+        position: relative;
+      }
+
+      .password-wrapper input {
+        width: 100%;
+        padding-right: 40px; /* space for icon */
+      }
+
+      .visibility-toggle {
+        position: absolute;
+        right: 10px;
+        top: 45%;
+        transform: translateY(-50%);
+        cursor: pointer;
+        color: #777;
+        user-select: none;     /* 🔐 Prevent text selection */
+        -webkit-user-select: none;
+        -moz-user-select: none;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="login-box">
+      <h2>Login Form</h2>
+      <form id="login-form">
+        <label for="personal_number">PERSONAL NUMBER:</label>
+        <input
+          type="text"
+          id="personal_number"
+          placeholder="Enter your personal number"
+          required
+        />
+
+        <div id="password-section" style="display: none">
+          <label for="password">Password:</label>
+          <div class="password-wrapper">
+            <input
+              type="password"
+              id="password"
+              placeholder="Enter your password"
+            />
+            <span class="material-icons visibility-toggle" id="toggle-password"
+              >visibility</span
+            >
+          </div>
+          <!-- <div class="checkbox-row">
+            <input type="checkbox" id="show-password" />
+            <label for="show-password">Show Password</label>
+          </div> -->
+        </div>
+        <button type="submit">Login</button>
+        <p id="message"></p>
+      </form>
+    </div>
+
+    <script>
+      const numberInput = document.getElementById("personal_number");
+      const passwordSection = document.getElementById("password-section");
+      const loginForm = document.getElementById("login-form");
+      const message = document.getElementById("message");
+      const showPassword = document.getElementById("show-password");
+      const passwordInput = document.getElementById("password");
+
+      let userType = null;
+      let debounceTimer = null;
+
+      // // Show/Hide password
+      // showPassword.addEventListener("change", () => {
+      //   passwordInput.type = showPassword.checked ? "text" : "password";
+      // });
+
+      // Debounce user typing
+      numberInput.addEventListener("input", () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(checkUserType, 600);
+      });
+
+      async function checkUserType() {
+        const personal_number = numberInput.value.trim();
+        if (!personal_number || personal_number.length < 5) {
+          userType = null;
+          passwordSection.style.display = "none";
+          return;
+        }
+
+        const res = await fetch("/check_user_type", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ personal_number }),
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          userType = data.type;
+          message.textContent = "";
+          if (userType === "admin") {
+            passwordSection.style.display = "block";
+          } else {
+            passwordSection.style.display = "none";
+          }
+        } else {
+          message.textContent = data.error;
+          passwordSection.style.display = "none";
+          userType = null;
+        }
+      }
+
+      loginForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const personal_number = numberInput.value.trim();
+
+        if (!userType) {
+          message.textContent = "Please enter a valid personal number.";
+          return;
+        }
+
+        if (userType === "admin") {
+          const password = passwordInput.value.trim();
+
+          const res = await fetch("/admin_login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ personal_number, password }),
+          });
+
+          const data = await res.json();
+          if (res.ok) {
+            window.location.href = "/admin"; // Change if needed
+          } else {
+            message.textContent = data.error;
+          }
+        } else {
+          const res = await fetch("/student_login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ personal_number }),
+          });
+
+          const data = await res.json();
+          if (res.ok) {
+            localStorage.setItem("personal_number", personal_number);
+            window.location.href = "/test";
+          } else {
+            message.textContent = data.error;
+          }
+        }
+      });
+
+      const togglePassword = document.getElementById("toggle-password");
+
+        togglePassword.addEventListener("click", () => {
+          const type = passwordInput.type === "password" ? "text" : "password";
+          passwordInput.type = type;
+
+          togglePassword.textContent = type === "password" ? "visibility" : "visibility_off";
+        });
+
+    </script>
+  </body>
+</html>

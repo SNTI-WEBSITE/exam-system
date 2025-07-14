@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- ✅ Bootstrap CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(to right, #e3f2fd, #ffffff);
+      padding-bottom: 100px;
+    }
+    .navbar {
+      background-color: #0d47a1;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    .navbar h1 {
+      color: white;
+      margin: 0 auto;
+    }
+    .card {
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .btn-primary {
+      background-color: #0d47a1;
+      border: none;
+    }
+    .btn-primary:hover {
+      background-color: #1565c0;
+    }
+    .status {
+      font-weight: 600;
+    }
+    table th, table td {
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ✅ Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark">
+    <div class="container">
+      <h1 class="text-center">Admin Dashboard</h1>
+    </div>
+  </nav>
+
+  <div class="container mt-5">
+    <!-- ✅ Upload Excel -->
+    <div class="card p-4 mb-4">
+      <h4 class="text-primary">Upload Question Excel File</h4>
+      <input type="file" id="excelFile" class="form-control mb-3">
+      <button onclick="uploadExcel()" class="btn btn-primary w-100">Upload</button>
+      <p id="uploadStatus" class="status mt-2 text-success"></p>
+    </div>
+
+    <!-- ✅ Test Settings -->
+    <div class="card p-4 mb-4">
+      <h4 class="text-primary">Set Test Settings</h4>
+      <label>Number of Questions:</label>
+      <input type="number" id="numQuestions" class="form-control mb-3" placeholder="e.g. 10" min="1" max="100">
+
+      <label>Select Test Type:</label>
+      <select id="testType" class="form-select mb-3">
+        <option value="pre">Pre-Test</option>
+        <option value="post">Post-Test</option>
+      </select>
+
+      <button onclick="startTest()" class="btn btn-success w-100">Start Selected Test</button>
+      <p id="testStatus" class="status mt-2 text-success"></p>
+    </div>
+
+    <!-- ✅ Results Viewer -->
+    <div class="card p-4 mb-4">
+      <h4 class="text-primary">Student Test Results</h4>
+      <button onclick="getResults()" class="btn btn-dark w-100 mb-3">View Results</button>
+      <div id="resultsArea" style="overflow-x:auto;"></div>
+    </div>
+
+    <!-- ✅ Delete Student Result -->
+    <div class="card p-4 mb-4">
+      <h4 class="text-danger">Delete Student Result</h4>
+      <input type="text" id="deletePN" class="form-control mb-2" placeholder="Enter Personal Number">
+      <button onclick="deleteResult()" class="btn btn-outline-danger w-100">Delete Result</button>
+      <p id="deleteStatus" class="mt-2 text-danger"></p>
+    </div>
+
+    <!-- ✅ Logout -->
+    <div class="text-center">
+      <button onclick="logout()" class="btn btn-outline-secondary mt-3">Logout</button>
+    </div>
+  </div>
+
+  <!-- ✅ Script -->
+  <script>
+    async function uploadExcel() {
+      const fileInput = document.getElementById("excelFile");
+      const status = document.getElementById("uploadStatus");
+
+      const file = fileInput.files[0];
+      if (!file) return alert("Please select a file.");
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/upload_question", {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await res.json();
+      status.textContent = res.ok ? data.message : data.error || "Upload failed.";
+    }
+
+    async function startTest() {
+      const num = parseInt(document.getElementById("numQuestions").value);
+      const testType = document.getElementById("testType").value;
+      const status = document.getElementById("testStatus");
+
+      if (!num || num <= 0) {
+        alert("Please enter a valid number of questions.");
+        return;
+      }
+
+      const configRes = await fetch("/start_test_config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ num_questions: num })
+      });
+
+      const windowRes = await fetch("/start_test_window", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: testType })
+      });
+
+      const configData = await configRes.json();
+      const windowData = await windowRes.json();
+      status.textContent = windowRes.ok ? windowData.message : windowData.error || "Failed to start test";
+    }
+
+    async function getResults() {
+      const res = await fetch("/get_results");
+      const data = await res.json();
+      const resultDiv = document.getElementById("resultsArea");
+
+      if (!res.ok || !data.results || data.results.length === 0) {
+        resultDiv.innerHTML = "<p class='text-danger'>No results available.</p>";
+        return;
+      }
+
+      const table = `
+        <table class="table table-bordered table-hover">
+          <thead class="table-light">
+            <tr>
+              <th>Personal Number</th>
+              <th>Name</th>
+              <th>Pre-Test Score</th>
+              <th>Post-Test Score</th>
+              <th>Learning Index</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data.results.map(r =>
+              `<tr>
+                <td>${r.personal_number}</td>
+                <td>${r.name}</td>
+                <td>${r.pre_score ?? "-"}</td>
+                <td>${r.post_score ?? "-"}</td>
+                <td>${r.learning_index ?? "-"}</td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+      `;
+      resultDiv.innerHTML = table;
+    }
+
+    async function deleteResult() {
+      const pn = document.getElementById("deletePN").value.trim();
+      const status = document.getElementById("deleteStatus");
+
+      if (!pn) {
+        status.textContent = "Please enter a personal number.";
+        return;
+      }
+
+      const res = await fetch("/delete_result", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ personal_number: pn })
+      });
+
+      const data = await res.json();
+      status.textContent = res.ok ? data.message : data.error;
+    }
+
+    function logout() {
+      window.location.href = "/login";
+    }
+  </script>
+
+</body>
+</html>

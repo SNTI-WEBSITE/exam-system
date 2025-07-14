@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Student Test</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(to right, #dbeafe, #ede9fe);
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: auto;
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      text-align: center;
+      color: #1d4ed8;
+    }
+
+    h3#test-type {
+      text-align: center;
+      color: #4f46e5;
+      margin-bottom: 20px;
+    }
+
+    #timer {
+      text-align: center;
+      font-size: 18px;
+      margin-bottom: 20px;
+      color: #6b7280;
+    }
+
+    .question {
+      margin-bottom: 25px;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 10px;
+    }
+
+    .question p {
+      font-weight: 600;
+    }
+
+    label {
+      display: block;
+      margin-left: 10px;
+      margin-top: 4px;
+      cursor: pointer;
+    }
+
+    input[type="radio"],
+    input[type="checkbox"] {
+      margin-right: 8px;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
+
+    button {
+      display: block;
+      width: 100%;
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+
+    button:hover {
+      background-color: #1e40af;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>PLC AND AUTOMATION</h1>
+    <h3 id="test-type">Loading Test Type...</h3>
+    <div id="timer">Timer: --:--</div>
+    <form id="test-form"></form>
+    <button onclick="submitTest()">Submit Test</button>
+  </div>
+
+  <script>
+    const personal_number = localStorage.getItem("personal_number");
+    let endTime = null;
+    let testType = "";
+    let questionMap = {};
+
+    async function loadTest() {
+      const res = await fetch("/start_test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ personal_number })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Error starting test");
+        window.location.href = "/login";
+        return;
+      }
+
+      testType = data.test_type;
+      document.getElementById("test-type").textContent = `Test Type: ${testType.toUpperCase()}`;
+
+      const form = document.getElementById("test-form");
+      form.innerHTML = "";
+
+      data.questions.forEach((q, index) => {
+        questionMap[q._id] = q;
+
+        const div = document.createElement("div");
+        div.className = "question";
+        div.innerHTML = `
+          <p>Q${index + 1}: ${q.question}</p>
+          ${
+            q.type === "text"
+              ? `<input type="text" name="${q._id}" class="form-control" />`
+              : q.options.map(opt => `
+                  <label>
+                    <input type="${q.type === 'multi' ? 'checkbox' : 'radio'}" name="${q._id}" value="${opt}" />
+                    ${opt}
+                  </label>
+                `).join("")
+          }
+        `;
+        form.appendChild(div);
+      });
+
+      endTime = new Date(data.end_time);
+      setInterval(updateTimer, 1000);
+    }
+
+    function updateTimer() {
+      if (!endTime) return;
+      const now = new Date();
+      const diff = endTime - now;
+
+      if (diff <= 0) {
+        document.getElementById("timer").textContent = "Time's up!";
+        submitTest();
+        return;
+      }
+
+      const mins = Math.floor(diff / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
+      document.getElementById("timer").textContent = `Time Left: ${mins}m ${secs}s`;
+    }
+
+    async function submitTest() {
+      const answers = {};
+
+      for (const qid in questionMap) {
+        const q = questionMap[qid];
+
+        if (q.type === "multi") {
+          const checkboxes = document.querySelectorAll(`input[name="${qid}"]:checked`);
+          answers[qid] = Array.from(checkboxes).map(cb => cb.value);
+        } else if (q.type === "text") {
+          const textInput = document.querySelector(`input[name="${qid}"]`);
+          answers[qid] = textInput ? textInput.value.trim() : null;
+        } else {
+          const selected = document.querySelector(`input[name="${qid}"]:checked`);
+          answers[qid] = selected ? selected.value : null;
+        }
+      }
+
+      const res = await fetch("/submit_test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ personal_number, answers })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert("Test submitted successfully!");
+        window.location.href = "/login";
+      } else {
+        alert(data.error || "Submission failed");
+      }
+    }
+
+    // ✅ Prevent Cheating: Block right-click & copy/paste
+    document.addEventListener("contextmenu", e => e.preventDefault());
+    document.addEventListener("keydown", function (e) {
+      if (
+        (e.ctrlKey && ['c', 'v', 'x', 'u'].includes(e.key.toLowerCase())) ||
+        e.key === "F12"
+      ) {
+        e.preventDefault();
+      }
+    });
+
+    // ✅ Prevent Cheating: Detect tab switch and log to server
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        alert("Tab switch detected! This will be reported.");
+        fetch("/log_tab_switch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ personal_number })
+        });
+      }
+    });
+
+    loadTest();
+  </script>
+
+</body>
+</html>

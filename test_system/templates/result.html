@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Test Results</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f2f2f2;
+      padding: 20px;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background-color: #fff;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    th, td {
+      padding: 12px 15px;
+      border: 1px solid #ddd;
+      text-align: center;
+    }
+
+    th {
+      background-color: #007bff;
+      color: white;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+
+    @media screen and (max-width: 600px) {
+      table, thead, tbody, th, td, tr {
+        display: block;
+      }
+
+      th {
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+      }
+
+      td {
+        position: relative;
+        padding-left: 50%;
+        text-align: left;
+      }
+
+      td::before {
+        position: absolute;
+        left: 15px;
+        width: 45%;
+        white-space: nowrap;
+        font-weight: bold;
+      }
+
+      td:nth-of-type(1)::before { content: "Personal No"; }
+      td:nth-of-type(2)::before { content: "Test Type"; }
+      td:nth-of-type(3)::before { content: "Score"; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Student Test Results</h1>
+  <table id="results-table">
+    <thead>
+      <tr>
+        <th>Personal No</th>
+        <th>Test Type</th>
+        <th>Score</th>
+      </tr>
+    </thead>
+    <tbody id="results-body">
+      <!-- Rows will be inserted here -->
+    </tbody>
+  </table>
+
+  <script>
+    async function fetchResults() {
+      const res = await fetch("/get_results");
+      const data = await res.json();
+
+      const tbody = document.getElementById("results-body");
+      tbody.innerHTML = "";
+
+      if (!res.ok || !data.results || data.results.length === 0) {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td colspan="3">No results available</td>`;
+        tbody.appendChild(row);
+        return;
+      }
+
+      data.results.forEach(r => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${r.personal_number}</td>
+          <td>${r.test_type.toUpperCase()}</td>
+          <td>${r.score}</td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    fetchResults();
+  </script>
+</body>
+</html>
