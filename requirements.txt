@@ -5,12 +5,14 @@ dnspython==2.7.0
 dotenv==0.9.9
 et_xmlfile==2.0.0
 Flask==3.1.1
+gunicorn==23.0.0
 itsdangerous==2.2.0
 Jinja2==3.1.6
 logging==0.4.9.6
 MarkupSafe==3.0.2
 numpy==2.3.1
 openpyxl==3.1.5
+packaging==25.0
 pandas==2.3.0
 pymongo==4.13.2
 python-dateutil==2.9.0.post0
