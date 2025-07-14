@@ -87,6 +87,27 @@
       <button onclick="deleteResult()" class="btn btn-outline-danger w-100">Delete Result</button>
       <p id="deleteStatus" class="mt-2 text-danger"></p>
     </div>
+<!-- ✅ Add & Manage Students -->
+<div class="card p-4 mb-4">
+  <h4 class="text-primary">Manage Students</h4>
+
+  <div class="row g-2 mb-3">
+    <div class="col-md-6">
+      <input type="text" id="studentPN" class="form-control" placeholder="Personal Number">
+    </div>
+    <div class="col-md-6">
+      <input type="text" id="studentName" class="form-control" placeholder="Student Name">
+    </div>
+    <div class="col-12">
+      <button onclick="addStudent()" class="btn btn-primary w-100">Add Student</button>
+      <p id="studentAddStatus" class="mt-2 text-success"></p>
+    </div>
+  </div>
+
+  <button onclick="loadStudents()" class="btn btn-dark w-100 mb-3">Refresh Student List</button>
+
+  <div id="studentTableArea" style="overflow-x:auto;"></div>
+</div>
 
     <!-- ✅ Logout -->
     <div class="text-center">
@@ -200,6 +221,75 @@
     function logout() {
       window.location.href = "/login";
     }
+async function addStudent() {
+  const pn = document.getElementById("studentPN").value.trim();
+  const name = document.getElementById("studentName").value.trim();
+  const status = document.getElementById("studentAddStatus");
+
+  if (!pn || !name) {
+    status.textContent = "Please enter both personal number and name.";
+    return;
+  }
+
+  const res = await fetch("/add_student", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ personal_number: pn, name: name })
+  });
+
+  const data = await res.json();
+  status.textContent = res.ok ? data.message : data.error;
+  loadStudents();
+}
+
+async function loadStudents() {
+  const res = await fetch("/get_students");
+  const data = await res.json();
+  const area = document.getElementById("studentTableArea");
+
+  if (!res.ok || !data.students || data.students.length === 0) {
+    area.innerHTML = "<p class='text-danger'>No students found.</p>";
+    return;
+  }
+
+  const table = `
+    <table class="table table-bordered table-hover">
+      <thead class="table-light">
+        <tr>
+          <th>Personal Number</th>
+          <th>Name</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${data.students.map(stu => `
+          <tr>
+            <td>${stu.personal_number}</td>
+            <td>${stu.name}</td>
+            <td>
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteStudent('${stu.personal_number}')">
+                Delete
+              </button>
+            </td>
+          </tr>`).join("")}
+      </tbody>
+    </table>
+  `;
+  area.innerHTML = table;
+}
+
+async function deleteStudent(pn) {
+  const res = await fetch("/delete_student", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ personal_number: pn })
+  });
+
+  const data = await res.json();
+  alert(data.message || data.error);
+  loadStudents();
+}
+
   </script>
 
 </body>

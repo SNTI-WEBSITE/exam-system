@@ -1,9 +1,10 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from pymongo import MongoClient
 import os
-from .utils.parse_excel import parse_excel_file
+from utils.parse_excel import parse_excel_file  
+
 
 from dotenv import load_dotenv
 import logging
@@ -15,6 +16,8 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.secret_key = 'your_secret_key_here'  # Use any strong string here
+
 app.config['UPLOAD_FOLDER'] = 'uploads'
 
 MONGO_URI = os.getenv("MONGO_URI")
@@ -35,9 +38,15 @@ def index():
 def login():
     return render_template('student_login.html')
 
-@app.route('/admin')
+@app.route('/sntad')
 def admin_panel():
+    if not session.get('admin_logged_in'):
+        return redirect('/login')  # 🔒 block access
     return render_template('admin.html')
+@app.route('/admin_logout')
+def admin_logout():
+    session.pop('admin_logged_in', None)  # Remove login flag
+    return redirect('/login')
 
 @app.route('/test')
 def test_page():
@@ -64,8 +73,10 @@ def admin_login():
     pw = data.get('password')
     admin = admin_col.find_one({'personal_number': str(pn)})
     if admin and pw == admin.get('password'):
+        session['admin_logged_in'] = True  # 🔐 Set login flag
         return jsonify({'message': 'Admin logged in'}), 200
     return jsonify({'error': 'Invalid admin credentials'}), 401
+
 
 @app.route('/upload_question', methods=['POST'])
 def upload_question():
@@ -249,6 +260,37 @@ def delete_result():
         return jsonify({'message': 'Tab switch logged'}), 200
     else:
         return jsonify({'error': 'Session not found or already submitted'}), 404
+@app.route('/add_student', methods=['POST'])
+def add_student():
+    data = request.get_json()
+    pn = str(data.get('personal_number')).strip()
+    name = data.get('name', '').strip()
+
+    if not pn or not name:
+        return jsonify({'error': 'Both personal number and name are required'}), 400
+
+    if student_col.find_one({'personal_number': pn}):
+        return jsonify({'error': 'Student already exists'}), 400
+
+    student_col.insert_one({'personal_number': pn, 'name': name})
+    return jsonify({'message': 'Student added successfully'})
+
+@app.route('/get_students', methods=['GET'])
+def get_students():
+    students = list(student_col.find({}, {'_id': 0}))
+    return jsonify({'students': students})
+
+@app.route('/delete_student', methods=['POST'])
+def delete_student():
+    data = request.get_json()
+    pn = str(data.get('personal_number')).strip()
+
+    result = student_col.delete_one({'personal_number': pn})
+    if result.deleted_count > 0:
+        return jsonify({'message': f'Student {pn} deleted successfully'})
+    else:
+        return jsonify({'error': 'Student not found'}), 404
+
 
 def evaluate_answers(questions, student_answers):
     score = 0
