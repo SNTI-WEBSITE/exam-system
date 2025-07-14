@@ -3,7 +3,8 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from pymongo import MongoClient
 import os
-from utils.parse_excel import parse_excel_file
+from .utils.parse_excel import parse_excel_file
+
 from dotenv import load_dotenv
 import logging
 import random
@@ -125,7 +126,7 @@ def student_login():
         pre_session = session_col.find_one({
             "personal_number": pn,
             "test_type": "pre",
-            "submitted": True
+            "submilastted": True
         })
         if not pre_session:
             return jsonify({'error': 'Pre-test not submitted. Cannot take post-test'}), 403
