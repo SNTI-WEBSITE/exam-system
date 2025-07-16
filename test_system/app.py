@@ -3,7 +3,7 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from pymongo import MongoClient
 import os
-from utils.parse_excel import parse_excel_file  
+from .utils.parse_excel import parse_excel_file  
 from dateutil import parser 
 
 from dotenv import load_dotenv
