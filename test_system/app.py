@@ -3,8 +3,8 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from pymongo import MongoClient
 import os
-from .utils.parse_excel import parse_excel_file  
-
+from utils.parse_excel import parse_excel_file  
+from dateutil import parser 
 
 from dotenv import load_dotenv
 import logging
@@ -82,17 +82,32 @@ def admin_login():
 def upload_question():
     if 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
+
     file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
+
     try:
         questions = parse_excel_file(filepath)
-        question_col.delete_many({})
-        question_col.insert_many(questions)
+        if not questions:
+            return jsonify({'error': 'No valid questions found in the file'}), 400
+
+        # Store as one document with metadata
+        question_col.insert_one({
+            'file_name': filename,
+            'questions': questions,
+            'uploaded_at': datetime.utcnow()
+        })
+
         return jsonify({'message': f'{len(questions)} questions uploaded successfully'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
 
 @app.route('/start_test_config', methods=['POST'])
 def start_test_config():
@@ -107,10 +122,14 @@ def start_test_config():
 def start_test_window():
     data = request.get_json()
     test_type = data.get('type')
-    start_time = datetime.utcnow()
-    expire_time = start_time + timedelta(minutes=5)
+    duration = int(data.get('duration', 30))  # Default to 30 minutes if not provided
+
     if test_type not in ['pre', 'post']:
         return jsonify({'error': 'Invalid test type'}), 400
+
+    start_time = datetime.utcnow()
+    expire_time = start_time + timedelta(minutes=duration)
+
     window_col.delete_many({"type": "active"})
     window_col.insert_one({
         "type": "active",
@@ -118,7 +137,13 @@ def start_test_window():
         "start_time": start_time,
         "expire_time": expire_time
     })
-    return jsonify({'message': f'{test_type.capitalize()} test window started'})
+
+    return jsonify({
+        'message': f'{test_type.capitalize()} test window started',
+        'start_time': start_time.isoformat(),
+        'expire_time': expire_time.isoformat()
+    })
+
 
 @app.route('/student_login', methods=['POST'])
 def student_login():
@@ -137,11 +162,13 @@ def student_login():
         pre_session = session_col.find_one({
             "personal_number": pn,
             "test_type": "pre",
-            "submilastted": True
+            "submitted": True
         })
         if not pre_session:
             return jsonify({'error': 'Pre-test not submitted. Cannot take post-test'}), 403
     return jsonify({'message': 'Student logged in'}), 200
+
+from dateutil import parser  # add at top if not already
 
 @app.route('/start_test', methods=['POST'])
 def start_test():
@@ -155,7 +182,11 @@ def start_test():
     test_type = window.get("test_type", "pre")
     existing = session_col.find_one({'personal_number': pn, 'test_type': test_type})
     now = datetime.utcnow()
-    end = now + timedelta(hours=2)
+
+    end = window.get("expire_time", now + timedelta(minutes=30))
+    if isinstance(end, str):
+        end = parser.isoparse(end)
+
     if existing:
         if existing.get("submitted"):
             return jsonify({'error': 'Test already submitted'}), 400
@@ -164,12 +195,20 @@ def start_test():
             "end_time": existing['end_time'],
             "test_type": test_type
         })
+
     student = student_col.find_one({'personal_number': pn})
     name = student.get('name', 'Unknown')
-    all_questions = list(question_col.find())
+
+    all_docs = list(question_col.find())
+    all_questions = []
+    for doc in all_docs:
+        all_questions.extend(doc.get("questions", []))
+
     selected = random.sample(all_questions, min(num_qs, len(all_questions)))
-    for q in selected:
-        q['_id'] = str(q['_id'])
+
+    for i, q in enumerate(selected):
+        q['_id'] = str(i)
+
     session_col.insert_one({
         "personal_number": pn,
         "name": name,
@@ -184,6 +223,7 @@ def start_test():
         "end_time": end,
         "test_type": test_type
     })
+
 
 @app.route('/submit_test', methods=['POST'])
 def submit_test():
@@ -246,9 +286,11 @@ def delete_result():
         return jsonify({'message': f"Deleted {result.deleted_count} test result(s) for {pn}"}), 200
     else:
         return jsonify({'error': f"No results found for {pn}"}), 404
-        @app.route('/log_tab_switch', methods=['POST'])
-        def log_tab_switch():
-         data = request.get_json()
+
+
+@app.route('/log_tab_switch', methods=['POST'])
+def log_tab_switch():
+    data = request.get_json()
     pn = str(data.get('personal_number')).strip()
 
     result = session_col.update_one(
@@ -260,6 +302,7 @@ def delete_result():
         return jsonify({'message': 'Tab switch logged'}), 200
     else:
         return jsonify({'error': 'Session not found or already submitted'}), 404
+
 @app.route('/add_student', methods=['POST'])
 def add_student():
     data = request.get_json()
@@ -296,7 +339,10 @@ def evaluate_answers(questions, student_answers):
     score = 0
     for q in questions:
         qid = str(q['_id'])
-        correct = q['correct_answer']
+        correct = q.get('correct_answer')
+        if correct is None:
+         continue
+
         user_ans = student_answers.get(qid)
         if q['type'] == 'multi':
             if isinstance(correct, str):

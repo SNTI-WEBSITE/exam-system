@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <title>Student Test</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
   <style>
     body {
       margin: 0;
@@ -61,15 +62,6 @@
       margin-right: 8px;
     }
 
-    input[type="text"] {
-      width: 100%;
-      padding: 10px;
-      margin-top: 10px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
-      font-size: 16px;
-    }
-
     button {
       display: block;
       width: 100%;
@@ -91,7 +83,7 @@
 <body>
 
   <div class="container">
-    <h1>PLC AND AUTOMATION~</h1>
+    <h1>Welcome to the Exam</h1>
     <h3 id="test-type">Loading Test Type...</h3>
     <div id="timer">Timer: --:--</div>
     <form id="test-form"></form>
@@ -129,19 +121,20 @@
 
         const div = document.createElement("div");
         div.className = "question";
-        div.innerHTML = `
-          <p>Q${index + 1}: ${q.question}</p>
-          ${
-            q.type === "text"
-              ? `<input type="text" name="${q._id}" class="form-control" />`
-              : q.options.map(opt => `
-                  <label>
-                    <input type="${q.type === 'multi' ? 'checkbox' : 'radio'}" name="${q._id}" value="${opt}" />
-                    ${opt}
-                  </label>
-                `).join("")
-          }
-        `;
+div.innerHTML = `
+  <p>Q${index + 1}: ${q.question}</p>
+  ${
+    q.type === "text"
+      ? `<input type="text" name="${q._id}" class="form-control" />`
+      : (q.options || []).map(opt => `
+          <label>
+            <input type="${q.type === 'multi' ? 'checkbox' : 'radio'}" name="${q._id}" value="${opt}" />
+            ${opt}
+          </label>
+        `).join("")
+  }
+`;
+
         form.appendChild(div);
       });
 
@@ -174,9 +167,6 @@
         if (q.type === "multi") {
           const checkboxes = document.querySelectorAll(`input[name="${qid}"]:checked`);
           answers[qid] = Array.from(checkboxes).map(cb => cb.value);
-        } else if (q.type === "text") {
-          const textInput = document.querySelector(`input[name="${qid}"]`);
-          answers[qid] = textInput ? textInput.value.trim() : null;
         } else {
           const selected = document.querySelector(`input[name="${qid}"]:checked`);
           answers[qid] = selected ? selected.value : null;
@@ -197,29 +187,6 @@
         alert(data.error || "Submission failed");
       }
     }
-
-    // ✅ Prevent Cheating: Block right-click & copy/paste
-    document.addEventListener("contextmenu", e => e.preventDefault());
-    document.addEventListener("keydown", function (e) {
-      if (
-        (e.ctrlKey && ['c', 'v', 'x', 'u'].includes(e.key.toLowerCase())) ||
-        e.key === "F12"
-      ) {
-        e.preventDefault();
-      }
-    });
-
-    // ✅ Prevent Cheating: Detect tab switch and log to server
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) {
-        alert("Tab switch detected! This will be reported.");
-        fetch("/log_tab_switch", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ personal_number })
-        });
-      }
-    });
 
     loadTest();
   </script>

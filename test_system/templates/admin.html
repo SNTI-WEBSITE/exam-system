@@ -57,21 +57,25 @@
       <p id="uploadStatus" class="status mt-2 text-success"></p>
     </div>
 
-    <!-- ✅ Test Settings -->
-    <div class="card p-4 mb-4">
-      <h4 class="text-primary">Set Test Settings</h4>
-      <label>Number of Questions:</label>
-      <input type="number" id="numQuestions" class="form-control mb-3" placeholder="e.g. 10" min="1" max="100">
+<!-- ✅ Test Settings -->
+<div class="card p-4 mb-4">
+  <h4 class="text-primary">Set Test Settings</h4>
 
-      <label>Select Test Type:</label>
-      <select id="testType" class="form-select mb-3">
-        <option value="pre">Pre-Test</option>
-        <option value="post">Post-Test</option>
-      </select>
+  <label>Number of Questions:</label>
+  <input type="number" id="numQuestions" class="form-control mb-3" placeholder="e.g. 10" min="1" max="100">
 
-      <button onclick="startTest()" class="btn btn-success w-100">Start Selected Test</button>
-      <p id="testStatus" class="status mt-2 text-success"></p>
-    </div>
+  <label>Test Duration (minutes):</label>
+  <input type="number" id="testDuration" class="form-control mb-3" placeholder="e.g. 30" min="1" max="180">
+
+  <label>Select Test Type:</label>
+  <select id="testType" class="form-select mb-3">
+    <option value="pre">Pre-Test</option>
+    <option value="post">Post-Test</option>
+  </select>
+
+  <button onclick="startTest()" class="btn btn-success w-100">Start Selected Test</button>
+  <p id="testStatus" class="status mt-2 text-success"></p>
+</div>
 
     <!-- ✅ Results Viewer -->
     <div class="card p-4 mb-4">
@@ -136,32 +140,37 @@
       status.textContent = res.ok ? data.message : data.error || "Upload failed.";
     }
 
-    async function startTest() {
-      const num = parseInt(document.getElementById("numQuestions").value);
-      const testType = document.getElementById("testType").value;
-      const status = document.getElementById("testStatus");
+async function startTest() {
+  const num = parseInt(document.getElementById("numQuestions").value);
+  const testType = document.getElementById("testType").value;
+  const duration = parseInt(document.getElementById("testDuration").value);
+  const status = document.getElementById("testStatus");
 
-      if (!num || num <= 0) {
-        alert("Please enter a valid number of questions.");
-        return;
-      }
+  if (!num || num <= 0 || !duration || duration <= 0) {
+    status.textContent = "Please enter valid number of questions and duration.";
+    return;
+  }
 
-      const configRes = await fetch("/start_test_config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ num_questions: num })
-      });
+  // Set number of questions
+  const configRes = await fetch("/start_test_config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ num_questions: num })
+  });
 
-      const windowRes = await fetch("/start_test_window", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: testType })
-      });
+  // Set test window with custom duration
+  const windowRes = await fetch("/start_test_window", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: testType, duration: duration })
+  });
 
-      const configData = await configRes.json();
-      const windowData = await windowRes.json();
-      status.textContent = windowRes.ok ? windowData.message : windowData.error || "Failed to start test";
-    }
+  const configData = await configRes.json();
+  const windowData = await windowRes.json();
+
+  status.textContent = windowRes.ok ? windowData.message : windowData.error || "Failed to start test";
+}
+
 
     async function getResults() {
       const res = await fetch("/get_results");
