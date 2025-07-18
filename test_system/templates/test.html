@@ -82,114 +82,128 @@
 </head>
 <body>
 
-  <div class="container">
-    <h1>Welcome to the Exam</h1>
-    <h3 id="test-type">Loading Test Type...</h3>
-    <div id="timer">Timer: --:--</div>
-    <form id="test-form"></form>
-    <button onclick="submitTest()">Submit Test</button>
-  </div>
+<div class="container">
+  <h1 id="testTitle">Loading test name...</h1>
+  <h3 id="test-type">Loading Test Type...</h3>
+  <div id="timer">Timer: --:--</div>
+  <form id="test-form"></form>
+  <button onclick="submitTest()">Submit Test</button>
+</div>
 
-  <script>
-    const personal_number = localStorage.getItem("personal_number");
-    let endTime = null;
-    let testType = "";
-    let questionMap = {};
+<script>
+  const personal_number = localStorage.getItem("personal_number");
+  let endTime = null;
+  let testType = "";
+  let questionMap = {};
 
-    async function loadTest() {
-      const res = await fetch("/start_test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ personal_number })
-      });
+  async function loadTest() {
+    const res = await fetch("/start_test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ personal_number })
+    });
 
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || "Error starting test");
-        window.location.href = "/login";
-        return;
-      }
-
-      testType = data.test_type;
-      document.getElementById("test-type").textContent = `Test Type: ${testType.toUpperCase()}`;
-
-      const form = document.getElementById("test-form");
-      form.innerHTML = "";
-
-      data.questions.forEach((q, index) => {
-        questionMap[q._id] = q;
-
-        const div = document.createElement("div");
-        div.className = "question";
-div.innerHTML = `
-  <p>Q${index + 1}: ${q.question}</p>
-  ${
-    q.type === "text"
-      ? `<input type="text" name="${q._id}" class="form-control" />`
-      : (q.options || []).map(opt => `
-          <label>
-            <input type="${q.type === 'multi' ? 'checkbox' : 'radio'}" name="${q._id}" value="${opt}" />
-            ${opt}
-          </label>
-        `).join("")
-  }
-`;
-
-        form.appendChild(div);
-      });
-
-      endTime = new Date(data.end_time);
-      setInterval(updateTimer, 1000);
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "Error starting test");
+      window.location.href = "/login";
+      return;
     }
 
-    function updateTimer() {
-      if (!endTime) return;
-      const now = new Date();
-      const diff = endTime - now;
+testType = data.test_type;
+document.getElementById("test-type").textContent = `Test Type: ${testType.toUpperCase()}`;
+document.getElementById("testTitle").textContent = data.test_name || "Welcome to the Exam";
 
-      if (diff <= 0) {
-        document.getElementById("timer").textContent = "Time's up!";
-        submitTest();
-        return;
-      }
 
-      const mins = Math.floor(diff / 60000);
-      const secs = Math.floor((diff % 60000) / 1000);
-      document.getElementById("timer").textContent = `Time Left: ${mins}m ${secs}s`;
-    }
 
-    async function submitTest() {
-      const answers = {};
+    const form = document.getElementById("test-form");
+    form.innerHTML = "";
 
-      for (const qid in questionMap) {
-        const q = questionMap[qid];
+    data.questions.forEach((q, index) => {
+      questionMap[q._id] = q;
 
-        if (q.type === "multi") {
-          const checkboxes = document.querySelectorAll(`input[name="${qid}"]:checked`);
-          answers[qid] = Array.from(checkboxes).map(cb => cb.value);
-        } else {
-          const selected = document.querySelector(`input[name="${qid}"]:checked`);
-          answers[qid] = selected ? selected.value : null;
+      const div = document.createElement("div");
+      div.className = "question";
+      div.innerHTML = `
+        <p>Q${index + 1}: ${q.question}</p>
+        ${
+          q.type === "text"
+            ? `<input type="text" name="${q._id}" class="form-control" />`
+            : (q.options || []).map(opt => `
+                <label>
+                  <input type="${q.type === 'multi' ? 'checkbox' : 'radio'}" name="${q._id}" value="${opt}" />
+                  ${opt}
+                </label>
+              `).join("")
         }
-      }
+      `;
 
-      const res = await fetch("/submit_test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ personal_number, answers })
-      });
+      form.appendChild(div);
+    });
 
-      const data = await res.json();
-      if (res.ok) {
-        alert("Test submitted successfully!");
-        window.location.href = "/login";
+    endTime = new Date(data.end_time);
+    setInterval(updateTimer, 1000);
+  }
+
+  function updateTimer() {
+    if (!endTime) return;
+    const now = new Date();
+    const diff = endTime - now;
+
+    if (diff <= 0) {
+      document.getElementById("timer").textContent = "Time's up!";
+      submitTest();
+      return;
+    }
+
+    const mins = Math.floor(diff / 60000);
+    const secs = Math.floor((diff % 60000) / 1000);
+    document.getElementById("timer").textContent = `Time Left: ${mins}m ${secs}s`;
+  }
+
+  async function submitTest() {
+    const answers = {};
+
+    for (const qid in questionMap) {
+      const q = questionMap[qid];
+
+      if (q.type === "multi") {
+        const checkboxes = document.querySelectorAll(`input[name="${qid}"]:checked`);
+        answers[qid] = Array.from(checkboxes).map(cb => cb.value);
       } else {
-        alert(data.error || "Submission failed");
+        const selected = document.querySelector(`input[name="${qid}"]:checked`);
+        answers[qid] = selected ? selected.value : null;
       }
     }
 
-    loadTest();
-  </script>
+    const res = await fetch("/submit_test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ personal_number, answers })
+    });
 
-</body>
-</html>
+    const data = await res.json();
+    if (res.ok) {
+      alert("Test submitted successfully!");
+      window.location.href = "/login";
+    } else {
+      alert(data.error || "Submission failed");
+    }
+  }
+
+  // ✅ Move function call after definition
+  // async function loadTestName() {
+  //   try {
+  //     const res = await fetch("/get_test_name");
+  //     const data = await res.json();
+  //     document.getElementById("testTitle").textContent = data.test_name;
+  //   } catch (err) {
+  //     console.error("Error loading test name:", err);
+  //     document.getElementById("testTitle").textContent = "Welcome to the Exam";
+  //   }
+  // }
+
+  // ✅ Start both functions after definitions
+  loadTest();
+  // loadTestName();
+</script>

@@ -203,22 +203,25 @@
           return;
         }
 
-        if (userType === "admin") {
-          const password = passwordInput.value.trim();
+if (userType === "admin") {
+  const password = passwordInput.value.trim();
 
-          const res = await fetch("/admin_login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ personal_number, password }),
-          });
+  const res = await fetch("/admin_login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ personal_number, password }),
+  });
 
-          const data = await res.json();
-          if (res.ok) {
-            window.location.href = "/sntad"  // change if nedded
-          } else {
-            message.textContent = data.error;
-          }
-        } else {
+  const data = await res.json();
+  if (res.ok) {
+    localStorage.setItem("personal_number", personal_number);  // ✅ Store admin number
+    window.location.href = "/sntad";
+  } else {
+    message.textContent = data.error;
+  }
+}
+
+           else {
           const res = await fetch("/student_login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },

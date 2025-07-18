@@ -61,11 +61,14 @@
 <div class="card p-4 mb-4">
   <h4 class="text-primary">Set Test Settings</h4>
 
+  <label>Test Name:</label>
+  <input type="text" id="testName" class="form-control mb-3" placeholder="e.g. Safety Training - Module 1">
+
   <label>Number of Questions:</label>
   <input type="number" id="numQuestions" class="form-control mb-3" placeholder="e.g. 10" min="1" max="100">
 
-  <label>Test Duration (minutes):</label>
-  <input type="number" id="testDuration" class="form-control mb-3" placeholder="e.g. 30" min="1" max="180">
+  <label>Test Duration (in minutes):</label>
+  <input type="number" id="testDuration" class="form-control mb-3" placeholder="e.g. 30" min="1">
 
   <label>Select Test Type:</label>
   <select id="testType" class="form-select mb-3">
@@ -76,6 +79,7 @@
   <button onclick="startTest()" class="btn btn-success w-100">Start Selected Test</button>
   <p id="testStatus" class="status mt-2 text-success"></p>
 </div>
+
 
     <!-- ✅ Results Viewer -->
     <div class="card p-4 mb-4">
@@ -112,6 +116,21 @@
 
   <div id="studentTableArea" style="overflow-x:auto;"></div>
 </div>
+<!-- ✅ Super Admin Section (Visible only to Super Admin) -->
+<div id="superAdminPanel" class="card p-4 mb-4" style="display: none;">
+  <h4 class="text-danger">Manage Admins</h4>
+
+  <div class="mb-3">
+    <input type="text" id="newAdminPN" class="form-control" placeholder="New Admin Personal Number">
+    <input type="password" id="newAdminPassword" class="form-control mt-2" placeholder="New Admin Password">
+    <button onclick="addAdmin()" class="btn btn-danger w-100 mt-2">Add Admin</button>
+    <p id="addAdminStatus" class="mt-2 text-success"></p>
+  </div>
+
+  <h6>Current Admins:</h6>
+  <button onclick="loadAdmins()" class="btn btn-secondary w-100 mb-2">Refresh Admin List</button>
+  <div id="adminListArea" style="overflow-x:auto;"></div>
+</div>
 
     <!-- ✅ Logout -->
     <div class="text-center">
@@ -121,6 +140,13 @@
 
   <!-- ✅ Script -->
   <script>
+    const isSuperAdmin = localStorage.getItem("personal_number") === "123455";
+window.onload = function () {
+  if (isSuperAdmin) {
+    document.getElementById("superAdminPanel").style.display = "block";
+  }
+};
+
     async function uploadExcel() {
       const fileInput = document.getElementById("excelFile");
       const status = document.getElementById("uploadStatus");
@@ -143,22 +169,28 @@
 async function startTest() {
   const num = parseInt(document.getElementById("numQuestions").value);
   const testType = document.getElementById("testType").value;
-  const duration = parseInt(document.getElementById("testDuration").value);
+  const duration = parseInt(document.getElementById("testDuration").value) || 30;
+  const testName = document.getElementById("testName").value || "Welcome to the Exam";
   const status = document.getElementById("testStatus");
 
-  if (!num || num <= 0 || !duration || duration <= 0) {
-    status.textContent = "Please enter valid number of questions and duration.";
+  if (!num || num <= 0) {
+    alert("Please enter a valid number of questions.");
     return;
   }
 
-  // Set number of questions
+  // Save test name to config
+  await fetch("/save_test_name", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: testName })
+  });
+
   const configRes = await fetch("/start_test_config", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ num_questions: num })
   });
 
-  // Set test window with custom duration
   const windowRes = await fetch("/start_test_window", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -167,7 +199,6 @@ async function startTest() {
 
   const configData = await configRes.json();
   const windowData = await windowRes.json();
-
   status.textContent = windowRes.ok ? windowData.message : windowData.error || "Failed to start test";
 }
 
@@ -297,8 +328,80 @@ async function deleteStudent(pn) {
   const data = await res.json();
   alert(data.message || data.error);
   loadStudents();
+  
 }
+  async function addAdmin() {
+    const pn = document.getElementById("newAdminPN").value.trim();
+    const pw = document.getElementById("newAdminPassword").value.trim();
+    const status = document.getElementById("addAdminStatus");
 
+    if (!pn || !pw) {
+      status.textContent = "Please enter both personal number and password.";
+      return;
+    }
+
+    const res = await fetch("/add_admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ personal_number: pn, password: pw })
+    });
+
+    const data = await res.json();
+    status.textContent = res.message || data.error;
+    loadAdmins();  // Refresh admin list
+  }
+
+  async function loadAdmins() {
+    const res = await fetch("/get_admins");
+    const data = await res.json();
+    const area = document.getElementById("adminListArea");
+
+    if (!res.ok || !data.admins || data.admins.length === 0) {
+      area.innerHTML = "<p class='text-danger'>No admins found.</p>";
+      return;
+    }
+
+    const table = `
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <th>Personal Number</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.admins.map(admin => `
+            <tr>
+              <td>${admin.personal_number}</td>
+              <td>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteAdmin('${admin.personal_number}')">
+                  Delete
+                </button>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+    area.innerHTML = table;
+  }
+
+  async function deleteAdmin(pn) {
+    if (pn === "123455") {
+      alert("Cannot delete the Super Admin.");
+      return;
+    }
+
+    const res = await fetch("/delete_admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ personal_number: pn })
+    });
+
+    const data = await res.json();
+    alert(data.message || data.error);
+    loadAdmins();  // Refresh admin list
+  }
   </script>
 
 </body>

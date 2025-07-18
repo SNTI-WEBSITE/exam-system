@@ -3,7 +3,7 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from pymongo import MongoClient
 import os
-from .utils.parse_excel import parse_excel_file  
+from utils.parse_excel import parse_excel_file  
 from dateutil import parser 
 
 from dotenv import load_dotenv
@@ -60,10 +60,14 @@ def result_page():
 def check_user_type():
     data = request.get_json()
     pn = data.get('personal_number')
-    if pn == '123455':
+    
+    admin = admin_col.find_one({'personal_number': str(pn)})
+    if admin:
         return jsonify({'type': 'admin'})
+    
     if student_col.find_one({'personal_number': str(pn)}):
         return jsonify({'type': 'student'})
+    
     return jsonify({'error': 'Not registered'}), 404
 
 @app.route('/admin_login', methods=['POST'])
@@ -73,9 +77,11 @@ def admin_login():
     pw = data.get('password')
     admin = admin_col.find_one({'personal_number': str(pn)})
     if admin and pw == admin.get('password'):
-        session['admin_logged_in'] = True  # 🔐 Set login flag
+        session['admin_logged_in'] = True
+        session['admin_role'] = admin.get('role', 'normal')  # store role
         return jsonify({'message': 'Admin logged in'}), 200
     return jsonify({'error': 'Invalid admin credentials'}), 401
+
 
 
 @app.route('/upload_question', methods=['POST'])
@@ -92,11 +98,15 @@ def upload_question():
     file.save(filepath)
 
     try:
+        # ✅ Parse Excel file
         questions = parse_excel_file(filepath)
         if not questions:
             return jsonify({'error': 'No valid questions found in the file'}), 400
 
-        # Store as one document with metadata
+        # ✅ Delete previous questions
+        question_col.delete_many({})  # 🔥 delete all old question sets
+
+        # ✅ Insert new question set
         question_col.insert_one({
             'file_name': filename,
             'questions': questions,
@@ -109,14 +119,25 @@ def upload_question():
 
 
 
+
 @app.route('/start_test_config', methods=['POST'])
 def start_test_config():
     data = request.get_json()
     num = data.get('num_questions')
+
     if not isinstance(num, int) or num <= 0:
         return jsonify({'error': 'Invalid number of questions'}), 400
-    config_col.update_one({"type": "test"}, {"$set": {"num_questions": num}}, upsert=True)
-    return jsonify({'message': f'Test configured with {num} questions per student'})
+
+    config_col.update_one(
+        {"type": "test"},
+        {"$set": {
+            "num_questions": num
+        }},
+        upsert=True
+    )
+    return jsonify({'message': f'Test configured with {num} questions'})
+
+
 
 @app.route('/start_test_window', methods=['POST'])
 def start_test_window():
@@ -179,14 +200,11 @@ def start_test():
     window = window_col.find_one({'type': 'active'})
     if not window:
         return jsonify({'error': 'No active test window'}), 403
+
     test_type = window.get("test_type", "pre")
+    expire_time = window.get("expire_time")  # ✅ get correct end time
+
     existing = session_col.find_one({'personal_number': pn, 'test_type': test_type})
-    now = datetime.utcnow()
-
-    end = window.get("expire_time", now + timedelta(minutes=30))
-    if isinstance(end, str):
-        end = parser.isoparse(end)
-
     if existing:
         if existing.get("submitted"):
             return jsonify({'error': 'Test already submitted'}), 400
@@ -199,6 +217,7 @@ def start_test():
     student = student_col.find_one({'personal_number': pn})
     name = student.get('name', 'Unknown')
 
+    # Flatten questions from all uploaded files
     all_docs = list(question_col.find())
     all_questions = []
     for doc in all_docs:
@@ -214,15 +233,36 @@ def start_test():
         "name": name,
         "test_type": test_type,
         "questions": selected,
-        "start_time": now,
-        "end_time": end,
+        "start_time": datetime.utcnow(),
+        "end_time": expire_time,  # ✅ use correct custom duration
         "submitted": False
     })
+
+    test_name_doc = config_col.find_one({"type": "test"})
+    test_name = test_name_doc.get("test_name", "Welcome to the Exam") if test_name_doc else "Welcome to the Exam"
+
+
     return jsonify({
-        "questions": selected,
-        "end_time": end,
-        "test_type": test_type
-    })
+    "questions": selected,
+    "end_time": expire_time,
+    "test_type": test_type,
+    "test_name": test_name
+})
+
+
+@app.route('/save_test_name', methods=['POST'])
+def save_test_name():
+    data = request.get_json()
+    name = data.get("name", "Welcome to the Exam")  # Fallback default
+    config_col.update_one({"type": "test"}, {"$set": {"test_name": name}}, upsert=True)
+    return jsonify({"message": "Test name saved"})
+
+@app.route('/get_test_name', methods=['GET'])
+def get_test_name():
+    config = config_col.find_one({"type": "test"})
+    name = config.get("test_name", "Welcome to the Exam") if config else "Welcome to the Exam"
+    return jsonify({"test_name": name})
+
 
 
 @app.route('/submit_test', methods=['POST'])
@@ -359,6 +399,39 @@ def evaluate_answers(questions, student_answers):
             if user_ans and correct and str(user_ans).strip().lower() == str(correct).strip().lower():
                 score += 1
     return score
+@app.route('/add_admin', methods=['POST'])
+def add_admin():
+    data = request.get_json()
+    pn = str(data.get('personal_number')).strip()
+    pw = str(data.get('password')).strip()
+    
+    if not pn or not pw:
+        return jsonify({'error': 'Both fields are required'}), 400
+    
+    if admin_col.find_one({'personal_number': pn}):
+        return jsonify({'error': 'Admin already exists'}), 400
+
+    admin_col.insert_one({'personal_number': pn, 'password': pw})
+    return jsonify({'message': 'Admin added successfully'}), 200
+
+@app.route('/get_admins', methods=['GET'])
+def get_admins():
+    admins = list(admin_col.find({}, {'_id': 0, 'password': 0}))
+    return jsonify({'admins': admins})
+
+@app.route('/delete_admin', methods=['POST'])
+def delete_admin():
+    data = request.get_json()
+    pn = str(data.get('personal_number')).strip()
+    
+    if pn == "123455":
+        return jsonify({'error': 'Cannot delete Super Admin'}), 403
+
+    result = admin_col.delete_one({'personal_number': pn})
+    if result.deleted_count > 0:
+        return jsonify({'message': 'Admin deleted successfully'}), 200
+    else:
+        return jsonify({'error': 'Admin not found'}), 404
 
 if __name__ == '__main__':
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
